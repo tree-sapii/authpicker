@@ -1,4 +1,10 @@
-use crate::types::{Msg, msgReplyType, msgSendType, msgType};
+use std::vec;
+
+use crate::{
+    key::{self, Key},
+    msg::msgSendType,
+    types::{Msg, msgReplyType, msgSendType, msgType},
+};
 use log::{error, info, warn};
 
 impl Msg {
@@ -40,6 +46,26 @@ impl Msg {
             msgReplyType::SSH_AGENT_EXTENSION_RESPONSE => return self.extension_response_handle(),
         }
         // TODO: please have better naming for this function
+    }
+
+    fn create_ident_req_msg() -> Vec<u8> {
+        let length: u32 = 1;
+        let mut msg: Vec<u8> = Vec::new();
+        msg.extend(length.to_ne_bytes());
+        msg.push(msgSendType::SSH_AGENTC_REQUEST_IDENTITIES as u8);
+        msg
+    }
+    fn create_agent_sign_req_msg(data: Vec<u8>, key: Key, flags: u32) -> Vec<u8> {
+        let mut msg: Vec<u8> = Vec::new();
+        msg.insert(4, msgSendType::SSH_AGENTC_SIGN_REQUEST as u8);
+        msg.extend(key.to_ssh_str());
+        msg.extend(data); // Passtrhu data
+        msg.extend(flags.to_be_bytes()); // Passtrhu flags
+        msg
+    }
+
+    fn create_lock_req(msg: Vec<u8>) -> Vec<u8> {
+        msg // Just pass thru the msg
     }
 
     fn success_handle(&self) {
