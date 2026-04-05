@@ -2,13 +2,10 @@
 //use std::os::unix::net::UnixStream;
 //
 
-pub mod client;
-pub mod key;
 pub mod msg;
 pub mod parse;
-pub mod server;
 pub mod types;
-use crate::types::{Client, Server};
+use crate::types::Server;
 //
 //fn main() -> std::io::Result<()> {
 //    let mut stream = UnixStream::connect(std::env::var("SSH_AUTH_SOCK").unwrap())?;
@@ -23,9 +20,6 @@ use crate::types::{Client, Server};
 
 #[tokio::main]
 async fn main() {
-    //Server::new("./textsock").start().await.unwrap();
-    Client::new(std::env::var("SSH_AUTH_SOCK").unwrap())
-        .send_msg()
-        .await
-        .unwrap();
+    let msg: Vec<u8> = vec![0, 0, 0, 1, 11];
+    Server::forward_msg(msg, std::env::var("SSH_AUTH_SOCK").unwrap().to_string()).await;
 }

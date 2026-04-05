@@ -1,12 +1,12 @@
-use std::io::{self, Result};
+use crate::msg::{Msg, msgReplyType, msgSendType, msgType};
+use std::io::{self, BufReader, Result};
 use std::path::{Path, PathBuf};
 use std::thread::{self, Thread};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::{
     self,
     net::{UnixListener, UnixStream},
 };
-
 pub struct Server {
     socket_path: PathBuf,
 }
@@ -34,65 +34,38 @@ impl Server {
     async fn handle_msg(connection: UnixStream) -> Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(4096);
         connection.try_read_buf(&mut buf)?;
-        println!("{:?}", String::from_utf8_lossy(&buf));
-        println!("{:?}", Msg::parse_sent(&buf)); // Just decode it
-        Self::send_resp(
-            connection,
-            msgReplyType::SSH_AGENT_IDENTITIES_ANSWER,
-            vec![],
-        )
-        .await
-        .unwrap();
+
+        let msg = Msg::server_parse_msg_recieved(&buf);
+        //match msg.msgtype {
+        //    msgType::msgSendType(reply) => {
+        //        match reply {
+        //            msgSendType::SSH_AGENTC_REQUEST_IDENTITIES =>
+        //        }
+        //    }
+        //    _ => return buf;
+        //}
+
         Ok(buf)
     }
-    async fn send_resp(
-        connection: UnixStream,
-        resptype: msgReplyType,
-        content: Vec<u8>,
-    ) -> Result<()> {
-        let mut buf: Vec<u8> = Vec::new();
-        let length = content.len() + 1; // + 1 is the resptype as its u8
-        buf.extend_from_slice(&length.to_be_bytes());
-        buf.push(resptype as u8);
-        buf.extend_from_slice(&content);
-        connection.try_write(&buf)?;
+    //async fn send_resp(connection: UnixStream, msg: Msg) -> Result<()> {
+    //    let mut buf: Vec<u8> = Vec::new();
+    //    let length = content.len() + 1; // + 1 is the resptype as its u8
+    //    buf.extend_from_slice(&length.to_be_bytes());
+    //    buf.push(resptype as u8);
+    //    buf.extend_from_slice(&content);
+    //    connection.try_write(&buf)?;
+    //    Ok(())
+    //}
+
+    pub async fn forward_msg(buf: Vec<u8>, socket_path: String) -> Result<()> {
+        let mut socket_stream: UnixStream = UnixStream::connect(socket_path).await?;
+        socket_stream.write(&buf).await.unwrap();
+        let mut buf: [u8; 4096] = [0; 4096];
+        socket_stream.read(&mut buf).await.unwrap();
+        let msg = Msg::client_parse_msg_recieved(&buf.to_vec());
+        println!("{:?}", msg);
+        msg.destructure_key_list_resp();
+
         Ok(())
     }
 }
-
-pub struct Client {
-    socket_path: PathBuf,
-}
-
-impl Client {
-    pub fn new(sock_path: impl AsRef<Path>) -> Client {
-        // Create the server obj
-        Client {
-            socket_path: PathBuf::from(&sock_path.as_ref()),
-        }
-    }
-    pub async fn send_msg(&self) -> Result<()> {
-        // This starts the server event loop that handles requests
-        let socket_stream: UnixStream = UnixStream::connect(&self.socket_path).await?;
-        socket_stream.try_write(&[0, 0, 0, 1, 11]);
-        loop {
-            // Loop over accepted connections
-            socket_stream.readable().await?;
-            println!("{:?}", Self::handle_response(&socket_stream).await.unwrap());
-        }
-    }
-    async fn handle_response(connection: &UnixStream) -> Result<Vec<u8>> {
-        let mut buf = Vec::with_capacity(4096);
-        connection.try_read_buf(&mut buf)?;
-        println!("{:?}", String::from_utf8_lossy(&buf));
-        println!("{:?}", Msg::parse_reply(&buf)); // Just decode it
-        Ok(buf)
-    }
-}
-
-struct App {
-    client: Client,
-    server: Server,
-}
-
-impl App {}
