@@ -120,7 +120,14 @@ impl Msg {
         buf_iter.take(num).collect()
     }
 
-    pub fn destructure_key_list_resp(self) -> Result<Vec<(String, String)>> {
+    fn extractSSHString<I>(buf: &mut I, length: usize) -> String
+    where
+        I: Iterator<Item = u8>,
+    {
+        String::from_utf8_lossy(&Msg::extract_n_bytes(buf, length)).to_string()
+    }
+
+    pub fn filter_shown_keys(self, filter: &String) -> Result<Vec<(String, String)>> {
         match &self.msgtype {
             msgType::msgReplyType(replyType) => {
                 let mut list = self.contents.into_iter();
@@ -135,69 +142,88 @@ impl Msg {
                     let total_key_blob_length =
                         u32::from_be_bytes(Msg::extract_n_bytes(&mut list, 4).try_into().unwrap());
 
-                    let key_type_blob_length =
-                        u32::from_be_bytes(Msg::extract_n_bytes(&mut list, 4).try_into().unwrap())
-                            as usize;
-
-                    let keytypeblob = String::from_utf8_lossy(&Msg::extract_n_bytes(
+                    let wholekeyblob = String::from_utf8_lossy(&Msg::extract_n_bytes(
                         &mut list,
-                        key_type_blob_length,
+                        total_key_blob_length as usize,
                     ))
                     .to_string();
 
-                    let keyblob_length =
-                        u32::from_be_bytes(Msg::extract_n_bytes(&mut list, 4).try_into().unwrap())
-                            as usize;
+                    let comment_len =
+                        u32::from_be_bytes(Msg::extract_n_bytes(&mut list, 4).try_into().unwrap());
 
-                    let keyblob: String =
-                        String::from_utf8_lossy(&Msg::extract_n_bytes(&mut list, keyblob_length))
-                            .to_string();
+                    let comment = String::from_utf8_lossy(&Msg::extract_n_bytes(
+                        &mut list,
+                        comment_len as usize,
+                    ))
+                    .to_string();
 
-                    let comment_length =
-                        u32::from_be_bytes(Msg::extract_n_bytes(&mut list, 4).try_into().unwrap())
-                            as usize;
-
-                    let commentblob: String =
-                        String::from_utf8_lossy(&Msg::extract_n_bytes(&mut list, comment_length))
-                            .to_string();
-
-                    if !commentblob.contains("yubi") {}
-
-                    if commentblob.contains("ssh:") && keytypeblob.contains("@openssh.com") {
-                        let extra_length = u32::from_be_bytes(
-                            Msg::extract_n_bytes(&mut list, 4).try_into().unwrap(),
-                        ) as usize;
-
-                        let extrablob: String =
-                            String::from_utf8_lossy(&Msg::extract_n_bytes(&mut list, extra_length))
-                                .to_string();
-
-                        if !extrablob.contains("yubi") {
-                            println!(
-                                "Total length: {} \n Keyblob type len: {} \n Keyblob type: {} \n Keyblob len: {} \n Keyblob: {} \n Comment len: {}, \n Comment: {}, \n Extra len: {} \n Extra blob {} \n ",
-                                total_key_blob_length,
-                                key_type_blob_length,
-                                keytypeblob,
-                                keyblob_length,
-                                keyblob,
-                                comment_length,
-                                commentblob,
-                                extra_length,
-                                extrablob
-                            );
-                        };
-                    } else {
-                        println!(
-                            "Total length: {} \n Keyblob type len: {} \n Keyblob type: {} \n Keyblob len: {} \n Keyblob: {} \n Comment len: {}, \n Comment: {}",
-                            total_key_blob_length,
-                            key_type_blob_length,
-                            keytypeblob,
-                            keyblob_length,
-                            keyblob,
-                            comment_length,
-                            commentblob,
-                        );
+                    if !comment.contains(filter) {
+                        println!("{}", comment);
                     };
+                    //let key_type_blob_length =
+                    //    u32::from_be_bytes(Msg::extract_n_bytes(&mut list, 4).try_into().unwrap())
+                    //        as usize;
+
+                    //let keytypeblob = String::from_utf8_lossy(&Msg::extract_n_bytes(
+                    //    &mut list,
+                    //    key_type_blob_length,
+                    //))
+                    //.to_string();
+
+                    //let keyblob_length =
+                    //    u32::from_be_bytes(Msg::extract_n_bytes(&mut list, 4).try_into().unwrap())
+                    //        as usize;
+
+                    //let keyblob: String =
+                    //    String::from_utf8_lossy(&Msg::extract_n_bytes(&mut list, keyblob_length))
+                    //        .to_string();
+
+                    //let comment_length =
+                    //    u32::from_be_bytes(Msg::extract_n_bytes(&mut list, 4).try_into().unwrap())
+                    //        as usize;
+
+                    //let commentblob: String =
+                    //    String::from_utf8_lossy(&Msg::extract_n_bytes(&mut list, comment_length))
+                    //        .to_string();
+
+                    //if !commentblob.contains("yubi") {}
+
+                    //if commentblob.contains("ssh:") && keytypeblob.contains("@openssh.com") {
+                    //    // Encountered that exntenion keys that have @openssh contain an extra
+                    //    // string before the comment that is just ssh:
+                    //    let extra_length = u32::from_be_bytes(
+                    //        Msg::extract_n_bytes(&mut list, 4).try_into().unwrap(),
+                    //    ) as usize;
+
+                    //    let extrablob: String =
+                    //        String::from_utf8_lossy(&Msg::extract_n_bytes(&mut list, extra_length))
+                    //            .to_string();
+
+                    //    if !extrablob.contains("yubi") {
+                    //        println!(
+                    //            "Total length: {} \n Keyblob type len: {} \n Keyblob type: {} \n Keyblob len: {} \n Keyblob: {} \n Comment len: {}, \n Comment: {}, \n Extra len: {} \n Extra blob {} \n ",
+                    //            total_key_blob_length,
+                    //            key_type_blob_length,
+                    //            keytypeblob,
+                    //            keyblob_length,
+                    //            keyblob,
+                    //            comment_length,
+                    //            commentblob,
+                    //            extra_length,
+                    //            extrablob
+                    //        );
+                    //    };
+                    //} else {
+                    //    println!(
+                    //        "Total length: {} \n Keyblob type len: {} \n Keyblob type: {} \n Keyblob len: {} \n Keyblob: {} \n Comment len: {}, \n Comment: {}",
+                    //        total_key_blob_length,
+                    //        key_type_blob_length,
+                    //        keytypeblob,
+                    //        keyblob_length,
+                    //        keyblob,
+                    //        comment_length,
+                    //        commentblob,
+                    //    );
                 }
 
                 //let key_str: String =

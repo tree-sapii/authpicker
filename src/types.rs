@@ -57,14 +57,14 @@ impl Server {
     //    Ok(())
     //}
 
-    pub async fn forward_msg(buf: Vec<u8>, socket_path: String) -> Result<()> {
+    pub async fn forward_msg(buf: Vec<u8>, socket_path: String, filter: String) -> Result<()> {
         let mut socket_stream: UnixStream = UnixStream::connect(socket_path).await?;
         socket_stream.write(&buf).await.unwrap();
         let mut buf: [u8; 4096] = [0; 4096];
         socket_stream.read(&mut buf).await.unwrap();
         let msg = Msg::client_parse_msg_recieved(&buf.to_vec());
         println!("{:?}", msg);
-        msg.destructure_key_list_resp();
+        msg.filter_shown_keys(&filter);
 
         Ok(())
     }
