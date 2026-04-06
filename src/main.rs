@@ -3,6 +3,7 @@
 //
 
 pub mod arg;
+pub mod key;
 pub mod msg;
 pub mod parse;
 pub mod types;
