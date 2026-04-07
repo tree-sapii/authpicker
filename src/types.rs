@@ -1,3 +1,4 @@
+use crate::key::Key;
 use crate::msg::{Msg, msgReplyType, msgSendType, msgType};
 use std::io::{self, BufReader, Result};
 use std::path::{Path, PathBuf};
@@ -31,20 +32,32 @@ impl Server {
             });
         }
     }
-    async fn handle_msg(connection: UnixStream) -> Result<Vec<u8>> {
+    async fn handle_msg(mut connection: UnixStream) -> Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(4096);
         connection.try_read_buf(&mut buf)?;
 
         let msg = Msg::server_parse_msg_recieved(&buf);
-        //match msg.msgtype {
-        //    msgType::msgSendType(reply) => {
-        //        match reply {
-        //            msgSendType::SSH_AGENTC_REQUEST_IDENTITIES =>
-        //        }
-        //    }
-        //    _ => return buf;
-        //}
+        println!("got {:?}", msg);
+        let repsonse: (Msg, Vec<Key>);
+        match msg.msgtype {
+            msgType::msgSendType(ref reply) => match reply {
+                msgSendType::SSH_AGENTC_REQUEST_IDENTITIES => {
+                    println!("Forwarding");
+                    repsonse = Server::forward_msg(
+                        [0, 0, 0, 1, 11].try_into().unwrap(),
+                        std::env::var("SSH_AUTH_SOCK").unwrap().to_string(),
+                        "yubai".to_string(),
+                    )
+                    .await
+                    .unwrap();
+                }
+                _ => panic!(),
+            },
+            _ => panic!(),
+        }
+        let mut byte_reponse = msg.server_build_msg(repsonse.1).unwrap();
 
+        connection.write(&byte_reponse);
         Ok(buf)
     }
     //async fn send_resp(connection: UnixStream, msg: Msg) -> Result<()> {
@@ -57,15 +70,20 @@ impl Server {
     //    Ok(())
     //}
 
-    pub async fn forward_msg(buf: Vec<u8>, socket_path: String, filter: String) -> Result<()> {
-        let mut socket_stream: UnixStream = UnixStream::connect(socket_path).await?;
+    pub async fn forward_msg(
+        buf: Vec<u8>,
+        socket_path: String,
+        filter: String,
+    ) -> Result<(Msg, Vec<Key>)> {
+        let mut socket_stream: UnixStream = UnixStream::connect(&socket_path).await?;
+        println!("Client connected to {}, buf is {:?}", socket_path, buf);
         socket_stream.write(&buf).await.unwrap();
         let mut buf: [u8; 4096] = [0; 4096];
         socket_stream.read(&mut buf).await.unwrap();
         let msg = Msg::client_parse_msg_recieved(&buf.to_vec());
         println!("{:?}", msg);
-        msg.filter_shown_keys(&filter);
+        let mut keys: Vec<Key> = msg.filter_shown_keys(&filter).unwrap();
 
-        Ok(())
+        Ok((msg, keys))
     }
 }

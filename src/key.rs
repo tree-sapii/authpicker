@@ -3,9 +3,10 @@ const COMPACT_STRING_LENGTH_LENGTH: usize = 4;
 // This might sound confusing but the ssh rfc mention that each string has its length inserted
 // as a uint32 before its string bytes
 
+#[derive(Debug)]
 pub struct Key {
-    keyblob: Vec<u8>,
-    comment: Vec<u8>,
+    pub keyblob: Vec<u8>,
+    pub comment: Vec<u8>,
     pub commentstr: String,
 }
 

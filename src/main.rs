@@ -26,10 +26,5 @@ use clap::Parser;
 async fn main() {
     let msg: Vec<u8> = vec![0, 0, 0, 1, 11];
     let args = Args::parse();
-    Server::forward_msg(
-        msg,
-        std::env::var("SSH_AUTH_SOCK").unwrap().to_string(),
-        args.f,
-    )
-    .await;
+    Server::new("./textsock").start().await.unwrap();
 }

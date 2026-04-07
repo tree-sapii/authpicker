@@ -74,10 +74,10 @@ impl Msg {
     pub fn client_build_msg(&self) -> Result<Vec<u8>> {
         match &self.msgtype {
             _ => panic!(),
-            msgType::msgSendType(sendType) => {
+            msgType::msgReplyType(replyType) => {
                 let mut reply: Vec<u8> = Vec::new();
                 reply.extend(self.length.to_be_bytes());
-                reply.push(std::ptr::addr_of!(sendType) as u8); // need to cast to a pointer to
+                reply.push(std::ptr::addr_of!(reply) as u8); // need to cast to a pointer to
                 // move out of reference works to be able to cast it as u8 TODO: Make this look
                 // better
                 reply.extend(self.contents.clone());
@@ -86,15 +86,24 @@ impl Msg {
         }
     }
 
-    pub fn server_build_msg(&self) -> Result<Vec<u8>> {
+    pub fn server_build_msg(&self, keys: Vec<Key>) -> Result<Vec<u8>> {
         match &self.msgtype {
-            msgType::msgReplyType(replyType) => {
+            msgType::msgSendType(sendType) => {
                 let mut reply: Vec<u8> = Vec::new();
+                println!("{}", &self.length);
                 reply.extend(self.length.to_be_bytes());
-                reply.push(std::ptr::addr_of!(replyType) as u8); // need to cast to a pointer to
+                reply.push(12 as u8); // need to cast to a pointer to
                 // move out of reference works to be able to cast it as u8 TODO: Make this look
                 // better
-                reply.extend(self.contents.clone());
+                println!("{:?}", keys);
+                reply.extend(keys.len().to_be_bytes());
+                for key in keys {
+                    reply.extend(&key.keyblob.len().to_be_bytes());
+                    reply.extend(&key.keyblob);
+                    reply.extend(&key.to_bytes());
+                }
+                println!("{:?}", reply);
+                println!("{:?}", Msg::client_parse_msg_recieved(&reply));
                 Ok(reply)
             }
             _ => panic!(),
@@ -121,37 +130,30 @@ impl Msg {
         buf_iter.take(num).collect()
     }
 
-    fn extractSSHString<I>(buf: &mut I, length: usize) -> String
-    where
-        I: Iterator<Item = u8>,
-    {
-        String::from_utf8_lossy(&Msg::extract_n_bytes(buf, length)).to_string()
+    fn get_keys_from_answ(&self) -> Vec<Key> {
+        let mut contents_iter = self.contents.clone().into_iter();
+        let nkeys: u32 = u32::from_be_bytes(
+            Msg::extract_n_bytes(&mut contents_iter, 4)
+                .try_into()
+                .unwrap(),
+        );
+        let mut keylist: Vec<Key> = Vec::with_capacity(nkeys as usize);
+        for key in 1..nkeys {
+            keylist.push(Key::from(&mut contents_iter));
+        }
+        keylist
     }
 
-    pub fn get_keys_from_answ(&mut self) {}
-
-    pub fn filter_shown_keys(self, filter: &String) -> Result<Vec<Key>> {
+    pub fn filter_shown_keys(&self, filter: &String) -> Result<Vec<Key>> {
         match &self.msgtype {
             msgType::msgReplyType(replyType) => {
-                let mut list = self.contents.into_iter();
-                let nkeys: u32 =
-                    u32::from_be_bytes(Msg::extract_n_bytes(&mut list, 4).try_into().unwrap());
-
-                // From inspecting, [0,0,0,51] is used to tell the entire length of the key blob,
-                // excluding the comment
-                //
-
-                let mut keylist: Vec<Key> = Vec::new();
-                for i in 0..nkeys {
-                    keylist.push(Key::from(&mut list));
-                }
-                keylist
-                    .iter()
-                    .filter(|key| !key.commentstr.contains(filter));
-
-                Ok(keylist)
+                return Ok(self
+                    .get_keys_from_answ()
+                    .into_iter()
+                    .filter(|key| !key.commentstr.contains(filter))
+                    .collect());
             }
-            _ => panic!(),
+            _ => panic!("Message is the wrong type"),
         }
     }
 }
